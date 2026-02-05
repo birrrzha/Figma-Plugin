@@ -1,5 +1,5 @@
 {
-  "name": "Figma Plugin",
+  "name": "Comments to Annotations",
   "id": "1600902593679936905",
   "api": "1.0.0",
   "main": "dist/code.js",
@@ -12,7 +12,8 @@
   "ui": "ui.html",
   "networkAccess": {
     "allowedDomains": [
-      "none"
+      "https://api.figma.com"
     ]
-  }
+  },
+  "enablePrivatePluginApi": true
 }

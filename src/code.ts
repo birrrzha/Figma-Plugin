@@ -7,31 +7,65 @@
 // full browser environment (See https://www.figma.com/plugin-docs/how-plugins-run).
 
 // This shows the HTML page in "ui.html".
-figma.showUI(__html__);
+// Show the UI with access to network
+figma.showUI(__html__, { width: 300, height: 400 });
 
-// Calls to "parent.postMessage" from within the HTML page will trigger this
-// callback. The callback will be passed the "pluginMessage" property of the
-// posted message.
-figma.ui.onmessage =  (msg: {type: string, count: number}) => {
-  // One way of distinguishing between different types of messages sent from
-  // your HTML page is to use an object with a "type" property like this.
-  if (msg.type === 'create-shapes') {
-    // This plugin creates rectangles on the screen.
-    const numberOfRectangles = msg.count;
-
-    const nodes: SceneNode[] = [];
-    for (let i = 0; i < numberOfRectangles; i++) {
-      const rect = figma.createRectangle();
-      rect.x = i * 150;
-      rect.fills = [{ type: 'SOLID', color: { r: 1, g: 0.5, b: 0 } }];
-      figma.currentPage.appendChild(rect);
-      nodes.push(rect);
-    }
-    figma.currentPage.selection = nodes;
-    figma.viewport.scrollAndZoomIntoView(nodes);
+// Handle messages from UI
+figma.ui.onmessage = async (msg: { type: string, comments?: any[], token?: string, fileKey?: string }) => {
+  if (msg.type === 'ui-ready') {
+    const token = process.env.FIGMA_ACCESS_TOKEN;
+    const fileKey = figma.fileKey;
+    console.log('Sending settings to UI. FileKey:', fileKey, 'Token exists:', !!token);
+    figma.ui.postMessage({ type: 'settings', token, fileKey });
+    return;
   }
 
-  // Make sure to close the plugin when you're done. Otherwise the plugin will
-  // keep running, which shows the cancel button at the bottom of the screen.
-  figma.closePlugin();
+  if (msg.type === 'create-annotations') {
+    const comments = msg.comments;
+    if (!comments || comments.length === 0) {
+      figma.notify('No comments found');
+      return;
+    }
+
+    let createdCount = 0;
+
+    // Process comments
+    for (const comment of comments) {
+      // Only process comments that are attached to nodes (have client_meta.node_id)
+      // and let's start with root comments or handle replies? The prompt says "converts Figma Comments".
+      // Usually you want to display the message.
+
+      const nodeId = comment.client_meta?.node_id;
+      if (nodeId) {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (node) {
+            // Create annotation
+            // According to documentation: node.annotations = [{ label: 'text' }]
+            // We should preserve existing annotations if possible, but the requirement is "onverts".
+            // Let's append to existing.
+
+            const newAnnotation = {
+              label: comment.message
+            };
+
+            // Check if node supports annotations? 
+            // "All nodes except slice and group nodes can have annotations" - (actually most nodes can)
+            // But we need to check if we can write to it.
+            if ('annotations' in node) {
+              const existingAnnotations = node.annotations || [];
+              node.annotations = [...existingAnnotations, newAnnotation];
+              createdCount++;
+            }
+          }
+        } catch (err) {
+          console.error('Error processing comment for node ' + nodeId, err);
+        }
+      }
+    }
+
+    figma.notify(`Created ${createdCount} annotations from ${comments.length} comments`);
+  }
+
+  // figma.closePlugin(); // Don't close immediately so we can see the result/status
 };
